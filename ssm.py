@@ -18,7 +18,7 @@ print("X.shape: ", X.shape)
 
 
 # %%
-bandwidth = 0.05
+bandwidth = 5e-3
 
 
 @jit
@@ -37,7 +37,7 @@ unif = jnp.ones(n_sample) / n_sample
 q2 = jnp.sum(K_X**2 + K_Y**2) / n_sample**2  # square missing ?
 
 # %%
-lambda1, lambda2 = 1, 1
+lambda1, lambda2 = 1 / n_sample, 1 / n_sample**0.5
 z = Q @ unif - lambda2 * jnp.sum((X - Y) ** 2, axis=-1)
 print("z.shape: ", z.shape)
 
@@ -370,7 +370,7 @@ print("rho: ", rho)
 
 
 # %%
-theta_min, theta_max = 1e-7, 1e7
+theta_min, theta_max = 1e-5, 1e5
 alpha_1, alpha_2 = 1e-6, 1.0
 beta_0, beta_1, beta_2 = 0.5, 1.2, 5.0
 
@@ -395,12 +395,12 @@ def algo2(v0, theta0, error=1e-2, max_iter=100):
     """Cuturi et al. algorithm 2."""
 
     # Parameters
-    eg = EG(f, proj, 1e-3)
+    L = 1e2
+    eg = EG(f, proj, L)
     eg.init(v0)
 
     # Variables
     _R = get_R(to_w(v0))
-    mu = get_mu(theta0, _R)
     r_norms = []
     v, w, theta = v0, to_w(v0), theta0
 
@@ -412,23 +412,29 @@ def algo2(v0, theta0, error=1e-2, max_iter=100):
         v = eg.step()
 
         # SSN
+        assert ~jnp.isnan(w[0]).any()  # DEBUG
+        assert ~jnp.isnan(w[1]).any()  # DEBUG
         delta_w = get_update(w, theta)
+        assert ~jnp.isnan(delta_w[0]).any()  # DEBUG
+        assert ~jnp.isnan(delta_w[1]).any()  # DEBUG
+        print("delta_w norm: ", get_r_norm(delta_w))
         gamma, _X = w
         gamma_tilde, _X_tilde = gamma + delta_w[0], _X + delta_w[1]
-        w_tilde = gamma_tilde, proj_sym_pos(_X_tilde)
+        w_tilde = gamma_tilde, _X_tilde
+
+        # Update theta
+        theta = update_theta(theta, delta_w, w_tilde)
 
         # Choosing the update
         R_w, R_v = get_R(w_tilde), get_R(to_w(v))
         if get_r_norm(R_w) < get_r_norm(R_v):
+            print("SSN update")
             w = w_tilde
             _R = R_w
         else:
+            print("EG update")
             w = to_w(v)
             _R = R_v
-
-        # Update theta
-        theta = update_theta(theta, delta_w, w_tilde)
-        mu = get_mu(theta, _R)
 
         # Save
         r_norm = get_r_norm(_R)
@@ -442,7 +448,7 @@ def algo2(v0, theta0, error=1e-2, max_iter=100):
 
 
 # %%
-error, max_iter = 1e-2, 20
+error, max_iter = 1e-2, 40
 theta0 = 1e2
 w, r_norms = algo2(v0, theta0, error, max_iter)
 ot_cuturi_estim = get_OT_from_gamma(w[0])
