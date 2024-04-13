@@ -25,7 +25,7 @@ from ott.geometry import costs, pointcloud
 from ott.tools import gaussian_mixture as gm
 
 # %%
-rng = jax.random.PRNGKey(0)
+rng = jax.random.PRNGKey(37)
 rng_src, rng_tgt = jax.random.split(rng)
 
 # Define the source and target samplers
@@ -175,7 +175,45 @@ def get_exact_map_from_1d_gm(gm1, gm2):
 
 
 # %%
-lb, ub = get_lim_from_gm(gm1, safety_factor=1)
+# test cdf inversion
+lb, ub = get_lim_from_gm(gm2)
+_cdf2 = get_cdf_from_gm(gm2, vectorized=False)
+
+
+def inv_cdf2(x, inv_precision=1e-5):
+    low, high = lb, ub
+    mid = (low + high) / 2
+    while jnp.abs(_cdf2(mid) - x).squeeze() > inv_precision:
+        if _cdf2(mid) < x:
+            low = mid
+        else:
+            high = mid
+        mid = (low + high) / 2
+    return mid
+
+
+elem = jnp.array([0.5])
+median = inv_cdf2(elem)
+print("median: ", median)
+
+# %%
+
+# plot
+x = np.linspace(-1, 1, 100)
+y1 = gm2_prob(x)
+y2 = cdf2(x)
+y3 = [inv_cdf2(_y2) for _y2 in y2]
+plt.plot(x, y1, label="pdf")
+plt.plot(x, y2, label="cdf")
+plt.plot(x, y3, label="inv_cdf cdf")
+plt.xlabel("x")
+plt.title("{} components".format(n_components_tgt))
+plt.legend()
+plt.show()
+
+# %%
+safety_factor = 3
+lb, ub = get_lim_from_gm(gm1, safety_factor=safety_factor)
 gm1_support = jnp.linspace(float(lb), float(ub), 100)
 exact_map = get_exact_map_from_1d_gm(src_sampler, tgt_sampler)
 exact_map_arr = [float(exact_map(_x)) for _x in gm1_support]
@@ -187,8 +225,6 @@ plt.show()
 
 
 # %%
-
-
 def get_approx_map_from_sampler(rng, src_sampler, tgt_sampler, n_sample):
     # Sample
     rng1, rng2 = jax.random.split(rng)
@@ -211,14 +247,15 @@ def get_approx_map_from_sampler(rng, src_sampler, tgt_sampler, n_sample):
 
 
 # %%
+
 # parameters
 n_sample_ref = 1024
 rng1, rng2 = jax.random.split(rng)
 src_sample = src_sampler.sample(rng1, n_sample_ref)
 tgt_sample = tgt_sampler.sample(rng2, n_sample_ref)
 
-src_lim = (float(e) for e in get_lim_from_gm(src_sampler, safety_factor=1))
-tgt_lim = (float(e) for e in get_lim_from_gm(src_sampler, safety_factor=1))
+src_lim = (float(e) for e in get_lim_from_gm(src_sampler, safety_factor=safety_factor))
+tgt_lim = (float(e) for e in get_lim_from_gm(src_sampler, safety_factor=safety_factor))
 data = pd.DataFrame({"source": src_sample.squeeze(), "target": tgt_sample.squeeze()})
 
 # get approx maps
