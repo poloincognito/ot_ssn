@@ -1,5 +1,9 @@
 # %%
+
+# Import
 from functools import partial
+from scipy.stats import qmc
+import math
 
 import jax
 import jax.numpy as jnp
@@ -7,7 +11,9 @@ import jax.random as random
 from jax import jit
 
 # %%
-rng = jax.random.PRNGKey(37)
+
+# Samples
+rng = jax.random.PRNGKey(42)
 rng1, rng2 = jax.random.split(rng)
 n_sample = 17
 dim = 5
@@ -18,19 +24,56 @@ print("X.shape: ", X.shape)
 
 
 # %%
+def get_fillings(dim, n_fillings):
+    """Get fillings for the kernel using the Sobol sequence.
+    Not jitted.
+    Filling length is ceil log2 of n_fillings.
+    """
+    sampler = qmc.Sobol(d=dim, scramble=False)
+    m = math.ceil(math.log2(n_fillings))
+    sample = sampler.random_base2(m=m)
+    return jnp.array(sample)
+
+
+fillings = get_fillings(dim, n_sample)
+
+
+# %%
+class KernelOT:
+    """Kernel Optimal Transport class."""
+
+    def __init__(self, src, tgt, n_fillings, kernel):
+        # Parameters
+        self.src = src
+        self.tgt = tgt
+        # self.fillings = get_fillings(dim, n_fillings)
+
+        # Compute kernel matrices
+        self.K_src = kernel(src, src)
+        self.K_tgt = kernel(tgt, tgt)
+        self.Q = self.K_src + self.K_tgt
+        srctgt = jnp.concatenate([src, tgt], axis=1)
+        self.K_srctgt = kernel(srctgt, srctgt)
+
+
+# %%
+
+# Kernel
 bandwidth = 5e-3
 
 
 @jit
-def get_K(X):
-    diff = X[:, jnp.newaxis, :] - X[jnp.newaxis, :, :]
+def gaussian_kernel(a, b):
+    # assert a.shape[1] == b.shape[1], "Gaussian kernel defined for same dimension inputs." # No assertion in jit
+    diff = a[:, jnp.newaxis, :] - b[jnp.newaxis, :, :]
     return jnp.exp(-jnp.sum(diff**2 / (2 * bandwidth), axis=-1))
 
 
-K_X = get_K(X)
+K_X = gaussian_kernel(X, X)
 print("K_X.shape: ", K_X.shape)
-K_Y = get_K(Y)
-K_XY = get_K(jnp.concatenate([X, Y], axis=1))
+K_Y = gaussian_kernel(Y, Y)
+XY = jnp.concatenate([X, Y], axis=1)
+K_XY = gaussian_kernel(XY, XY)
 print("K_XY.shape: ", K_XY.shape)
 Q = K_X + K_Y
 unif = jnp.ones(n_sample) / n_sample
