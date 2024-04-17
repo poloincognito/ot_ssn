@@ -1,3 +1,4 @@
+# %%
 import jax
 import jax.numpy as jnp
 import jax.random as random
@@ -191,27 +192,14 @@ theta = kot.update_theta(theta, delta_w, w)
 print("theta: ", theta)
 
 # %%
-from eg import EG
-
-# Parameters
+# Solve via EG
 v0 = jnp.zeros(n + n**2)
-N = 100
-r_norms = []
-to_w = lambda w: (w[:n], w[n:].reshape((n, n)))
-eg = EG(f, proj, L)
-
-# Run
-eg.init(v0)
-for _ in range(N):
-    _ = eg.step()
-    w = to_w(_)
-    _R = kot.get_R(w)
-    r_norm = get_r_norm(_R)
-    r_norms.append(r_norm)
+error, max_iter = 1e-2, 40
+w, r_norms = kot.run_eg(v0, error, max_iter)
 ot_eg_estim = kot.get_OT_from_gamma(w[0])
 
 # Plot
-plt.plot(range(N), r_norms)
+plt.plot(range(len(r_norms)), r_norms)
 plt.xlabel("Iteration")
 plt.ylabel("r_norm")
 plt.title("Convergence of r_norm")

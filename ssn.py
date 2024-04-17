@@ -171,6 +171,30 @@ class KernelOT:
 
         return f, proj, L
 
+    def run_eg(self, v0, error=1e-2, max_iter=100):
+        # Parameters
+        r_norms = []
+        n = self.n
+        to_w = lambda w: (w[:n][:, jnp.newaxis], w[n:].reshape((n, n)))
+        f, proj, L = self.get_eg_params()
+        eg = EG(f, proj, L)
+
+        # Run
+        eg.init(v0)
+        for _ in range(max_iter):
+            _ = eg.step()
+            w = to_w(_)
+            _R = self.get_R(w)
+            r_norm = get_r_norm(_R)
+            r_norms.append(r_norm)
+            if r_norm < error:
+                print("The algorithm converged in {} steps.".format(_))
+                break
+
+        return w, r_norms
+
+    # About the SSN algorithm
+
     def update_theta(self, theta, delta_w, w_tilde):  # not jitted
         rho = self.get_rho(w_tilde, delta_w)
         delta_w_norm = get_r_norm(delta_w)
