@@ -15,7 +15,7 @@ class EG:
     and concave in its second arg, f should be: (d1 F, -d2 F)"""
 
     def __init__(self, f, proj, L=1.0):
-        self.f = f
+        self.f = f  # gradient
         self.proj = proj
         self.stepsize = 1 / (2**0.5 * L)  # optimal stepsize is 1/(2**0.5 * L)
 

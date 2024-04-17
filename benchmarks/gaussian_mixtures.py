@@ -4,24 +4,12 @@ import numpy as np
 import seaborn as sns
 import pandas as pd
 
-# import torchvision.datasets as datasets
-# import torchvision
-# import torch
-
 import jax
 import jax.numpy as jnp
-import jax.random as random
 from jax.scipy.stats import norm
-from functools import partial
 from jax import jit
 
-# import optax
-# from optax._src import base
-# import flax.linen as nn
-# from flax.training import train_state
-
 import ott
-from ott.geometry import costs, pointcloud
 from ott.tools import gaussian_mixture as gm
 
 # %%
@@ -29,7 +17,6 @@ rng = jax.random.PRNGKey(37)
 rng_src, rng_tgt = jax.random.split(rng)
 
 # Define the source and target samplers
-
 n_dim = 1
 n_components_src = 3
 n_components_tgt = 5
@@ -52,11 +39,9 @@ print("gm1.scale_params.shape: ", gm1.scale_params.shape)
 def gm1_prob(x):
     return jnp.exp(jax.vmap(gm1.log_prob)(x[:, jnp.newaxis]))
 
-
 @jit
 def gm2_prob(x):
     return jnp.exp(jax.vmap(gm2.log_prob)(x[:, jnp.newaxis]))
-
 
 # plot src
 x = np.linspace(-1, 1, 100)
@@ -81,8 +66,6 @@ plt.title(
 plt.show()
 
 # %%
-
-
 def get_cdf_from_gm(gm, vectorized=True):
     """Return the cdf of a gaussian mixture."""
     loc, covariance = gm.loc, gm.covariance.squeeze()
@@ -142,7 +125,6 @@ def get_lim_from_gm(gm, safety_factor=7):
 
     return lb, ub
 
-
 print("limits of the source: ", get_lim_from_gm(gm1))
 
 
@@ -175,6 +157,7 @@ def get_exact_map_from_1d_gm(gm1, gm2):
 
 
 # %%
+
 # test cdf inversion
 lb, ub = get_lim_from_gm(gm2)
 _cdf2 = get_cdf_from_gm(gm2, vectorized=False)
