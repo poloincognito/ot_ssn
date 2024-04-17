@@ -1,3 +1,7 @@
 notes.md
 __pycache__/
 datasets/
+.pytest_cache/
+tutorials/
+kernel-sos-ot/
+papers/
