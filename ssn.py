@@ -1,6 +1,8 @@
 # Import
 from functools import partial
-from scipy.stats import qmc
+
+# from scipy.stats import qmc
+from sobol_seq import i4_sobol_generate
 import math
 
 import jax
@@ -14,12 +16,12 @@ from eg import EG
 def get_fillings(dim, n_fillings):
     """Get fillings for the kernel using the Sobol sequence.
     Not jitted.
-    Filling length is ceil log2 of n_fillings.
     """
-    sampler = qmc.Sobol(d=dim, scramble=False)
-    m = math.ceil(math.log2(n_fillings))
-    sample = sampler.random_base2(m=m)
-    return jnp.array(sample)
+    # sampler = qmc.Sobol(d=dim, scramble=False)
+    # m = math.ceil(math.log2(n_fillings))
+    # sample = sampler.random_base2(m=m)
+    # return jnp.array(sample)
+    return jnp.array(i4_sobol_generate(dim, n_fillings))
 
 
 # Kernel OT class

@@ -3,5 +3,11 @@ __pycache__/
 datasets/
 .pytest_cache/
 tutorials/
-kernel-sos-ot/
 papers/
+
+# kernel-sos-ott
+kernel-sos-ot/
+sobol_seq.py
+sobol.cpp
+optim.py
+utils.py

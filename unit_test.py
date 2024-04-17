@@ -2,6 +2,8 @@ import jax
 import jax.numpy as jnp
 import jax.random as random
 
+import matplotlib.pyplot as plt
+
 from ssn import (
     get_fillings,
     get_gaussian_kernel_func,
@@ -37,6 +39,15 @@ n = XY_fillings.shape[0]
 assert XY_fillings.shape == (n, 2 * dim)
 print("XY_fillings.shape: ", XY_fillings.shape)
 X_fillings, Y_fillings = XY_fillings[:, :dim], XY_fillings[:, dim:]
+
+# %%
+
+# Unidimensional fillings
+uni_XY_fillings = get_fillings(2, n_sample)
+uni_X, uni_Y = uni_XY_fillings[:, 0], uni_XY_fillings[:, 1]
+plt.scatter(uni_X, uni_Y)
+plt.title("Unidimensional fillings (Sobol sequence)")
+plt.show()
 
 # %%
 
@@ -181,7 +192,6 @@ print("theta: ", theta)
 
 # %%
 from eg import EG
-import matplotlib.pyplot as plt
 
 # Parameters
 v0 = jnp.zeros(n + n**2)
@@ -208,13 +218,15 @@ plt.title("Convergence of r_norm")
 plt.show()
 
 # %%
+# Solve via SSN
 error, max_iter = 1e-2, 40
 theta0 = 1e2
 w, r_norms = kot.run_ssn(v0, theta0, error, max_iter)
 ot_cuturi_estim = kot.get_OT_from_gamma(w[0])
 
-# Plot convergence
-plt.plot(range(max_iter), r_norms)
+# %%
+# Plot SSN convergence
+plt.plot(range(len(r_norms)), r_norms)
 plt.xlabel("Iteration")
 plt.ylabel("r_norm")
 plt.title("Convergence of r_norm")
