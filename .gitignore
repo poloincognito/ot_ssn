@@ -6,7 +6,7 @@ tutorials/
 papers/
 
 # kernel-sos-ott
-kernel-sos-ot/
+1D Example.ipynb
 sobol_seq.py
 sobol.cpp
 optim.py

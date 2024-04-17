@@ -21,32 +21,48 @@ n_dim = 1
 n_components_src = 3
 n_components_tgt = 5
 
+kwargs = {"stdev_mean": 0.1, "stdev_cov": 0.1, "stdev_weights": 0.1, "ridge": 0.5}
 src_sampler = gm.gaussian_mixture.GaussianMixture.from_random(
-    rng_src, n_components_src, n_dim, stdev_mean=0.3
+    rng_src, n_components_src, n_dim, **kwargs
 )
 tgt_sampler = gm.gaussian_mixture.GaussianMixture.from_random(
-    rng_tgt, n_components_tgt, n_dim, stdev_mean=0.3
+    rng_tgt, n_components_tgt, n_dim, **kwargs
 )
-# src_sampler.sample(rng,16)
+
+# Scale down the scale
+gm1 = gm.gaussian_mixture.GaussianMixture(
+    loc=src_sampler.loc,
+    scale_params=-1 + src_sampler.scale_params,
+    component_weight_ob=src_sampler.component_weight_ob,
+)
+gm2 = gm.gaussian_mixture.GaussianMixture(
+    loc=tgt_sampler.loc,
+    scale_params=-1 + tgt_sampler.scale_params,
+    component_weight_ob=tgt_sampler.component_weight_ob,
+)
 
 # %%
-gm1, gm2 = src_sampler, tgt_sampler
 print("gm1.loc.shape: ", gm1.loc.shape)
 print("gm1.scale_params.shape: ", gm1.scale_params.shape)
 
 
-@jit
-def gm1_prob(x):
-    return jnp.exp(jax.vmap(gm1.log_prob)(x[:, jnp.newaxis]))
+def pdf_from_gm(gm):
+    """Return the vectorized pdf of the gaussian mixture."""
 
-@jit
-def gm2_prob(x):
-    return jnp.exp(jax.vmap(gm2.log_prob)(x[:, jnp.newaxis]))
+    @jit
+    def pdf(x):
+        return jnp.exp(jax.vmap(gm1.log_prob)(x[:, jnp.newaxis]))
+
+    return pdf
+
+
+gm1_pdf = pdf_from_gm(gm1)
+gm2_pdf = pdf_from_gm(gm2)
 
 # plot src
-x = np.linspace(-1, 1, 100)
-y = gm1_prob(x)
-plt.plot(x, y)
+x = np.linspace(0, 1, 100)
+gm1_pdf_arr = gm1_pdf(x)
+plt.plot(x, gm1_pdf_arr)
 plt.xlabel("x")
 plt.ylabel("Probability Density")
 plt.title(
@@ -55,9 +71,8 @@ plt.title(
 plt.show()
 
 # plot tgt
-x = np.linspace(-1, 1, 100)
-y = gm2_prob(x)
-plt.plot(x, y)
+gm2_pdf_arr = gm2_pdf(x)
+plt.plot(x, gm2_pdf_arr)
 plt.xlabel("x")
 plt.ylabel("Probability Density")
 plt.title(
@@ -65,18 +80,20 @@ plt.title(
 )
 plt.show()
 
+
 # %%
 def get_cdf_from_gm(gm, vectorized=True):
     """Return the cdf of a gaussian mixture."""
     loc, covariance = gm.loc, gm.covariance.squeeze()
     n_components, n_dim = loc.shape
     weights = gm.component_weights
-
     assert n_dim == 1, "CDF is only available for unidimensional gaussian mixtures"
 
     @jit
     def _cdf(x):
-        return jnp.dot(weights[jnp.newaxis, :], norm.cdf(x, loc.squeeze(), covariance))
+        return weights[jnp.newaxis, :] @ jnp.array(
+            norm.cdf(x, loc.squeeze(), covariance)
+        )
 
     if vectorized:
         cdf = jax.vmap(_cdf)
@@ -89,11 +106,9 @@ def get_cdf_from_gm(gm, vectorized=True):
 cdf1 = get_cdf_from_gm(gm1)
 
 # plot src
-x = np.linspace(-1, 1, 100)
-y1 = gm1_prob(x)
-y2 = cdf1(x)
-plt.plot(x, y1, label="pdf")
-plt.plot(x, y2, label="cdf")
+gm1_cdf_arr = cdf1(x)
+plt.plot(x, gm1_pdf_arr, label="pdf")
+plt.plot(x, gm1_cdf_arr, label="cdf")
 plt.xlabel("x")
 plt.title("{} components".format(n_components_src))
 plt.legend()
@@ -102,11 +117,9 @@ plt.show()
 cdf2 = get_cdf_from_gm(gm2)
 
 # plot tgt
-x = np.linspace(-1, 1, 100)
-y1 = gm2_prob(x)
-y2 = cdf2(x)
-plt.plot(x, y1, label="pdf")
-plt.plot(x, y2, label="cdf")
+gm2_cdf_arr = cdf2(x)
+plt.plot(x, gm2_pdf_arr, label="pdf")
+plt.plot(x, gm2_cdf_arr, label="cdf")
 plt.xlabel("x")
 plt.title("{} components".format(n_components_tgt))
 plt.legend()
@@ -114,16 +127,17 @@ plt.show()
 
 
 # %%
-def get_lim_from_gm(gm, safety_factor=7):
+def get_lim_from_gm(gm, safety_factor=5):
     """Return the limits of the gaussian mixture."""
     loc, covariance = gm.loc, gm.covariance.squeeze()
     n_components, n_dim = loc.shape
     assert n_dim == 1, "limits are only available for unidimensional gaussian mixtures"
 
-    lb = jnp.min(loc - safety_factor * covariance)
-    ub = jnp.max(loc + safety_factor * covariance)
+    lb = jnp.min(loc - safety_factor * covariance**0.5)
+    ub = jnp.max(loc + safety_factor * covariance**0.5)
 
     return lb, ub
+
 
 print("limits of the source: ", get_lim_from_gm(gm1))
 
@@ -182,13 +196,10 @@ print("median: ", median)
 # %%
 
 # plot
-x = np.linspace(-1, 1, 100)
-y1 = gm2_prob(x)
-y2 = cdf2(x)
-y3 = [inv_cdf2(_y2) for _y2 in y2]
-plt.plot(x, y1, label="pdf")
-plt.plot(x, y2, label="cdf")
-plt.plot(x, y3, label="inv_cdf cdf")
+inv_cdf_cdf_arr = [inv_cdf2(_y) for _y in gm2_cdf_arr]
+plt.plot(x, gm2_pdf_arr, label="pdf")
+plt.plot(x, gm2_cdf_arr, label="cdf")
+plt.plot(x, inv_cdf_cdf_arr, label="inv_cdf cdf")
 plt.xlabel("x")
 plt.title("{} components".format(n_components_tgt))
 plt.legend()
@@ -198,7 +209,7 @@ plt.show()
 safety_factor = 3
 lb, ub = get_lim_from_gm(gm1, safety_factor=safety_factor)
 gm1_support = jnp.linspace(float(lb), float(ub), 100)
-exact_map = get_exact_map_from_1d_gm(src_sampler, tgt_sampler)
+exact_map = get_exact_map_from_1d_gm(gm1, gm2)
 exact_map_arr = [float(exact_map(_x)) for _x in gm1_support]
 plt.plot(gm1_support, exact_map_arr)
 plt.xlabel("x")
@@ -209,6 +220,7 @@ plt.show()
 
 # %%
 def get_approx_map_from_sampler(rng, src_sampler, tgt_sampler, n_sample):
+    """Groundtruth should be biggest batch."""
     # Sample
     rng1, rng2 = jax.random.split(rng)
     src_sample = src_sampler.sample(rng1, n_sample)
