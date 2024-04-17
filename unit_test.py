@@ -135,16 +135,14 @@ print("R_norm: ", R_norm)
 # %%
 theta = 0.5
 mu = get_mu(theta, R)
-print("mu.shape: ", mu.shape)  # ambiguity R from K cholseky and R the residual
+print("mu: ", mu)
 
 # %%
-xhi, _ = get_xhi(eigenval, mu)
-alpha, alpha_bar = _
+xhi = get_xhi(eigenval, mu)
 print("xhi.shape: ", xhi.shape)
-print("alpha: ", alpha)
 
 # %%
-psi = get_psi(xhi, mu)
+psi = get_psi(xhi, mu, eigenval)
 print("psi.shape: ", psi.shape)
 
 # %%
@@ -208,7 +206,7 @@ plt.show()
 # %%
 # Solve via SSN
 error, max_iter = 1e-2, 40
-theta0 = 1e2
+theta0 = 1
 w, r_norms = kot.run_ssn(v0, theta0, error, max_iter)
 ot_cuturi_estim = kot.get_OT_from_gamma(w[0])
 

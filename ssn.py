@@ -327,53 +327,54 @@ def get_mu(theta, R):
     return (theta * get_r_norm(R)).squeeze()
 
 
-def get_xhi(eigenval, mu, return_alpha=True):
-    """Compute eta from eigenvalues of sym matrix.
-    Not jitted."""
-    alpha_pos_filter = eigenval > 0
-    alpha, alpha_bar = jnp.where(alpha_pos_filter)[0], jnp.where(~alpha_pos_filter)[0]
-    alpha_pos = eigenval[alpha]
-    alpha_neg = eigenval[alpha_bar]
-    diff = alpha_pos[:, jnp.newaxis] - alpha_neg[jnp.newaxis, :]
-    eta = alpha_pos[:, jnp.newaxis] / diff
+@jit
+def get_xhi(eigenval, mu):
+    """Compute xhi from eigenvalues of sym matrix."""
+    alpha_filter = jnp.diag((eigenval > 0))
+    alpha_bar_filter = jnp.diag(~(eigenval > 0))
+    col = jnp.ones((eigenval.shape[0], 1))
+    alpha_rows = col @ eigenval[jnp.newaxis, :]
+    alpha_cols = alpha_rows.T
+    diff = alpha_rows - alpha_cols
+    diff = (
+        diff
+        + alpha_bar_filter @ jnp.ones_like(diff)
+        + jnp.ones_like(diff) @ alpha_filter
+    )  # no division by zero
+    eta = alpha_rows / diff
+    eta = alpha_filter @ eta @ alpha_bar_filter
     xhi = eta / (mu + 1 - eta)
-
-    if return_alpha:
-        return xhi, (alpha, alpha_bar)
-    else:
-        return xhi
+    return xhi
 
 
 @jit
-def get_psi(xhi, mu):
-    _alpha, _alpha_bar = xhi.shape
-    ones = jnp.ones((_alpha, _alpha))
-    zeros = jnp.zeros((_alpha_bar, _alpha_bar))
-    return jnp.block([[ones / mu, xhi], [xhi.T, zeros]])
+def get_psi(xhi, mu, eigenval):
+    alpha_filter = jnp.diag((eigenval > 0))
+    return 1 / mu * alpha_filter @ jnp.ones_like(xhi) @ alpha_filter + xhi + xhi.T
 
 
 def get_T_op(mu, P, eigenval, n):
     """Returns T as a function.
     T_op: n² -> n²
     Not optimized."""
-    xhi, _ = get_xhi(eigenval, mu)
-    alpha, alpha_bar = _
-    alpha_norm = alpha.shape[0]
+    xhi = get_xhi(eigenval, mu)
+    alpha_norm = jnp.sum(eigenval > 0)
 
     if alpha_norm < 0.5 * n:
-        P_alpha = P[:, alpha]
-        P_alpha_bar = P[:, alpha_bar]
+        P_alpha = P @ jnp.diag((eigenval > 0))
 
+        @jit
         def T_op(S):
             U = P_alpha.T @ S
             _1 = U @ P_alpha @ P_alpha.T / (2 * mu)
-            _2 = U @ P_alpha_bar
-            G = P_alpha @ (_1 + jnp.multiply(xhi, _2) @ P_alpha_bar.T)
+            _2 = U @ P
+            G = P_alpha @ (_1 + jnp.multiply(xhi, _2) @ P.T)
             return G + G.T
 
     else:
-        psi = get_psi(xhi, mu)
+        psi = get_psi(xhi, mu, eigenval)
 
+        @jit
         def T_op(S):
             _ = 1 / mu * jnp.ones((n, n)) - psi
             _ = jnp.multiply(_, P.T @ S @ P)
