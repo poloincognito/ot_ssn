@@ -1,5 +1,6 @@
 # Import
 from functools import partial
+import numpy as np
 
 # from scipy.stats import qmc
 from sobol_seq import i4_sobol_generate
@@ -21,7 +22,7 @@ def get_fillings(dim, n_fillings):
     # m = math.ceil(math.log2(n_fillings))
     # sample = sampler.random_base2(m=m)
     # return jnp.array(sample)
-    return jnp.array(i4_sobol_generate(dim, n_fillings))
+    return jnp.array(i4_sobol_generate(dim, n_fillings, skip=3000))
 
 
 # Kernel OT class
@@ -56,11 +57,22 @@ class KernelOT:
         self.q2 = jnp.mean(kernel(self.src, self.src) ** 2) + jnp.mean(
             kernel(self.tgt, self.tgt) ** 2
         )
-        unif_sample = jnp.ones(n_sample) / n_sample
-        self.w_src = (unif_sample @ kernel(self.src, self.X_fillings))[:, jnp.newaxis]
-        self.w_tgt = (unif_sample @ kernel(self.tgt, self.Y_fillings))[:, jnp.newaxis]
-        self.R = jnp.linalg.cholesky(self.K_XY).T
-        _ = self.R.T[:, jnp.newaxis, :]
+        self.w_src = jnp.mean(kernel(self.src, self.X_fillings), axis=0)[:, jnp.newaxis]
+        self.w_tgt = jnp.mean(kernel(self.tgt, self.Y_fillings), axis=0)[:, jnp.newaxis]
+
+        # Cholesky
+        min_eigenvals = min(np.linalg.eigvalsh(self.K_XY))
+        if min_eigenvals < 0:
+            print("K_XY is not SDP, minimal eigenvalue is {}".format(min_eigenvals))
+            if min_eigenvals > -1e-6:  # correction
+                self.K_XY = self.K_XY + 2 * (-min_eigenvals) * jnp.eye(
+                    self.K_XY.shape[0]
+                )
+                assert min(np.linalg.eigvalsh(self.K_XY)) > 0.0
+            else:
+                raise ValueError("K_XY is not SDP")
+        self.R_cholesky = np.linalg.cholesky(self.K_XY).T
+        _ = self.R_cholesky.T[:, jnp.newaxis, :]
         self.A = jax.vmap(jnp.kron, in_axes=0)(_, _).squeeze()
         self.Id = jnp.eye(self.n)
         self.z = (
@@ -268,7 +280,7 @@ def get_gaussian_kernel_func(bandwith):
     def gaussian_kernel(a, b):
         # assert a.shape[1] == b.shape[1], "Gaussian kernel defined for same dimension inputs." # No assertion in jit
         diff = a[:, jnp.newaxis, :] - b[jnp.newaxis, :, :]
-        return jnp.exp(-jnp.sum(diff**2 / (2 * bandwith), axis=-1))
+        return jnp.exp(-jnp.sum(diff**2 / (2 * bandwith**2), axis=-1))
 
     return gaussian_kernel
 
