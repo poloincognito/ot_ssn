@@ -53,7 +53,10 @@ class KernelOT:
         self.K_XY = kernel(self.XY_fillings, self.XY_fillings)
 
         # Other parameters
-        self.lambda1, self.lambda2 = 1 / self.n, 1 / n_sample**0.5
+        self.lambda1, self.lambda2 = (
+            1 / self.n,
+            1 / n_sample**0.5,
+        )  # **0.5 TODO: square root?
         self.q2 = jnp.mean(kernel(self.src, self.src) ** 2) + jnp.mean(
             kernel(self.tgt, self.tgt) ** 2
         )
@@ -166,7 +169,7 @@ class KernelOT:
         def f(x):
             _gamma, _X = x[:n][:, jnp.newaxis], x[n:]
             f1 = 1 / (2 * lambda2) * (Q @ _gamma - z) - A @ _X[:, jnp.newaxis]
-            f2 = -self.phi_star_op(_gamma) - lambda1 * Id
+            f2 = self.phi_star_op(_gamma) + lambda1 * Id
             return jnp.concatenate((f1.flatten(), f2.flatten()))
 
         @jit
@@ -183,21 +186,25 @@ class KernelOT:
 
         return f, proj, L
 
-    def run_eg(self, v0, error=1e-2, max_iter=100):
+    def run_eg(self, v0, error=1e-2, max_iter=100, verbose=False):
         # Parameters
         r_norms = []
         n = self.n
         to_w = lambda w: (w[:n][:, jnp.newaxis], w[n:].reshape((n, n)))
         f, proj, L = self.get_eg_params()
+        # L = 1 / (2**0.5 * 0.01)  # TODO: remove or investigate
         eg = EG(f, proj, L)
 
         # Run
         eg.init(v0)
-        for _ in range(max_iter):
-            _ = eg.step()
-            w = to_w(_)
+        for step in range(max_iter):
+            v = eg.step()
+            w = to_w(v)
             _R = self.get_R(w)
             r_norm = get_r_norm(_R)
+            if verbose:
+                print("Step: ", step)
+                print("r_norm: ", r_norm)
             r_norms.append(r_norm)
             if r_norm < error:
                 print("The algorithm converged in {} steps.".format(_))
@@ -217,7 +224,7 @@ class KernelOT:
         else:
             return min(self.theta_max, self.beta_2 * theta)
 
-    def run_ssn(self, v0, theta0, error=1e-2, max_iter=100):
+    def run_ssn(self, v0, theta0, error=1e-2, max_iter=100, verbose=False):
         """Cuturi et al. algorithm 2.
         Termination condition not implemented."""
 
@@ -233,7 +240,8 @@ class KernelOT:
 
         # Iteration
         for step in range(max_iter):
-            print("Step: ", step)
+            if verbose:
+                print("Step: ", step)
 
             # EG
             v = eg.step()
@@ -244,7 +252,8 @@ class KernelOT:
             delta_w = self.get_update(w, theta)
             assert ~jnp.isnan(delta_w[0]).any()  # DEBUG
             assert ~jnp.isnan(delta_w[1]).any()  # DEBUG
-            print("delta_w norm: ", get_r_norm(delta_w))
+            if verbose:
+                print("delta_w norm: ", get_r_norm(delta_w))
             gamma, _X = w
             gamma_tilde, _X_tilde = gamma + delta_w[0], _X + delta_w[1]
             w_tilde = gamma_tilde, _X_tilde
@@ -255,17 +264,20 @@ class KernelOT:
             # Choosing the update
             R_w, R_v = self.get_R(w_tilde), self.get_R(to_w(v))
             if get_r_norm(R_w) < get_r_norm(R_v):
-                print("SSN update")
+                if verbose:
+                    print("SSN update")
                 w = w_tilde
                 _R = R_w
             else:
-                print("EG update")
+                if verbose:
+                    print("EG update")
                 w = to_w(v)
                 _R = R_v
 
             # Save
             r_norm = get_r_norm(_R)
-            print("r_norm: ", r_norm)
+            if verbose:
+                print("r_norm: ", r_norm)
             r_norms.append(r_norm)
             if r_norm < error:
                 print("The algorithm converged in {} steps.".format(step))
@@ -369,28 +381,37 @@ def get_T_op(mu, P, eigenval, n):
     """Returns T as a function.
     T_op: n² -> n²
     Not optimized."""
-    xhi = get_xhi(eigenval, mu)
     alpha_norm = jnp.sum(eigenval > 0)
 
     if alpha_norm < 0.5 * n:
-        P_alpha = P @ jnp.diag((eigenval > 0))
-
-        @jit
-        def T_op(S):
-            U = P_alpha.T @ S
-            _1 = U @ P_alpha @ P_alpha.T / (2 * mu)
-            _2 = U @ P
-            G = P_alpha @ (_1 + jnp.multiply(xhi, _2) @ P.T)
-            return G + G.T
+        return lambda S: _T_op1(P, eigenval, mu, S)
 
     else:
-        psi = get_psi(xhi, mu, eigenval)
+        return lambda S: _T_op2(P, eigenval, mu, S)
 
-        @jit
-        def T_op(S):
-            _ = 1 / mu * jnp.ones((n, n)) - psi
-            _ = jnp.multiply(_, P.T @ S @ P)
-            _ = P @ _ @ P.T
-            return S / mu - _
 
-    return T_op
+@jit
+def _T_op1(P, eigenval, mu, S):
+    # Compue xhi
+    xhi = get_xhi(eigenval, mu)
+    P_alpha = P @ jnp.diag((eigenval > 0))
+
+    # Compute T_op[S]
+    U = P_alpha.T @ S
+    _1 = U @ P_alpha @ P_alpha.T / (2 * mu)
+    _2 = U @ P
+    G = P_alpha @ (_1 + jnp.multiply(xhi, _2) @ P.T)
+    return G + G.T
+
+
+@jit
+def _T_op2(P, eigenval, mu, S):
+    # Compute psi
+    xhi = get_xhi(eigenval, mu)
+    psi = get_psi(xhi, mu, eigenval)
+
+    # Compute T_op[S]
+    _ = 1 / mu * jnp.ones((n, n)) - psi
+    _ = jnp.multiply(_, P.T @ S @ P)
+    _ = P @ _ @ P.T
+    return S / mu - _

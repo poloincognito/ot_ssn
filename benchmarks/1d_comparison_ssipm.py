@@ -115,7 +115,7 @@ Phi, M, Kx1, Ky1, Kx2, Ky2, Kx3, Ky3 = make_kernels(
 )
 
 # %%
-# Compare to KernelOT implementation
+# Compare the kernels to KernelOT implementation
 bandwidth = (0.05) ** 0.5  # l = 2*bandwidth**2
 my_gaussian_kernel = get_gaussian_kernel_func(bandwidth)
 to_multidim_jnp = lambda x: jnp.array(x)[:, jnp.newaxis]
@@ -171,6 +171,28 @@ G, eps = interior_point(
 )
 
 kernel_sos_ot = transport_cost(G, Kx2, Kx3, Ky2, Ky3, lbda_2, product_sampling=False)
+
+# %%
+compare = lambda x, y: jnp.linalg.norm(x - y) / jnp.linalg.norm(y)
+
+# Compare SSIPM and EG results
+v0 = jnp.zeros((nfill + nfill**2))  # beware, eps = 1e-10
+w, r_norms = kot.run_eg(v0)
+plt.plot(r_norms)
+plt.title("EG convergence")
+plt.show()
+eg_rdiff = compare(w[0].flatten(), G)
+print("Relative difference is {}".format(eg_rdiff))
+
+# %%
+# Compare SSIPM and SSN results
+theta0 = 1.0
+w, r_norms = kot.run_ssn(v0, theta0, 1e-10, 40)
+plt.plot(r_norms)
+plt.title("SSN convergence")
+plt.show()
+ssn_rdiff = compare(w[0].flatten(), G)
+print("Relative difference is {}".format(ssn_rdiff))
 
 # %%
 ### Compute OT from samples
