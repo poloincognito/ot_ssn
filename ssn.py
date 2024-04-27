@@ -186,13 +186,14 @@ class KernelOT:
 
         return f, proj, L
 
-    def run_eg(self, v0, error=1e-2, max_iter=100, verbose=False):
+    def run_eg(self, v0, error=1e-2, max_iter=100, verbose=False, L=None):
         # Parameters
         r_norms = []
         n = self.n
         to_w = lambda w: (w[:n][:, jnp.newaxis], w[n:].reshape((n, n)))
-        f, proj, L = self.get_eg_params()
-        # L = 1 / (2**0.5 * 0.01)  # TODO: remove or investigate
+        f, proj, L_estimate = self.get_eg_params()
+        if L is None:
+            L = L_estimate
         eg = EG(f, proj, L)
 
         # Run
