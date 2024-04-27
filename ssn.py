@@ -75,7 +75,7 @@ class KernelOT:
             else:
                 raise ValueError("K_XY is not SDP")
         self.R_cholesky = np.linalg.cholesky(self.K_XY).T
-        _ = self.R_cholesky.T[:, jnp.newaxis, :]
+        _ = self.R_cholesky.T[:, jnp.newaxis, :]  # phi columns to rows
         self.A = jax.vmap(jnp.kron, in_axes=0)(_, _).squeeze()
         self.Id = jnp.eye(self.n)
         self.z = (
@@ -209,6 +209,7 @@ class KernelOT:
             if r_norm < error:
                 print("The algorithm converged in {} steps.".format(_))
                 break
+        print("The algorithm did not converge in {} steps.".format(max_iter))
 
         return w, r_norms
 
@@ -252,6 +253,7 @@ class KernelOT:
             delta_w = self.get_update(w, theta)
             assert ~jnp.isnan(delta_w[0]).any()  # DEBUG
             assert ~jnp.isnan(delta_w[1]).any()  # DEBUG
+
             if verbose:
                 print("delta_w norm: ", get_r_norm(delta_w))
             gamma, _X = w
@@ -411,7 +413,7 @@ def _T_op2(P, eigenval, mu, S):
     psi = get_psi(xhi, mu, eigenval)
 
     # Compute T_op[S]
-    _ = 1 / mu * jnp.ones((n, n)) - psi
+    _ = 1 / mu * jnp.ones_like(P) - psi
     _ = jnp.multiply(_, P.T @ S @ P)
     _ = P @ _ @ P.T
     return S / mu - _

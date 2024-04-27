@@ -1,8 +1,8 @@
 # %%
 import jax
 import jax.numpy as jnp
-import jax.random as random
 
+import ott
 import matplotlib.pyplot as plt
 
 from ssn import (
@@ -25,10 +25,10 @@ from ssn import (
 # Samples
 rng = jax.random.PRNGKey(42)
 rng1, rng2 = jax.random.split(rng)
-dim, n_sample = 5, 17
-X, Y = jax.random.normal(rng1, (n_sample, dim)), jax.random.normal(
-    rng2, (n_sample, dim)
-)
+dim, n_sample = 10, 100
+src = ott.tools.gaussian_mixture.gaussian.Gaussian.from_random(rng1,dim)
+tgt = ott.tools.gaussian_mixture.gaussian.Gaussian.from_random(rng2,dim)
+X, Y = src.sample(rng1, n_sample), tgt.sample(rng2, n_sample)
 assert X.shape == (n_sample, dim)
 print("X.shape: ", X.shape)
 

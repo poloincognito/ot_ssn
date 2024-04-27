@@ -24,7 +24,7 @@ from utils import (
     potential_1D,
     gaussian_kernel,
 )
-from ssn import KernelOT, get_gaussian_kernel_func
+from ssn import KernelOT, get_gaussian_kernel_func, _phi_star_op, get_r_norm
 
 # %%
 nfill = 100
@@ -137,7 +137,7 @@ assert jnp.linalg.norm(kot.R_cholesky - Phi) < 1e-2 * jnp.linalg.norm(kot.R_chol
 ## Regularization parameters
 
 lbda_1 = 1 / nfill
-lbda_2 = 1 / nsamples
+lbda_2 = 1 / nsamples  # **0.5  # to be removed
 
 
 ## Optimization problem parameters
@@ -176,13 +176,38 @@ kernel_sos_ot = transport_cost(G, Kx2, Kx3, Ky2, Ky3, lbda_2, product_sampling=F
 compare = lambda x, y: jnp.linalg.norm(x - y) / jnp.linalg.norm(y)
 
 # Compare SSIPM and EG results
-v0 = jnp.zeros((nfill + nfill**2))  # beware, eps = 1e-10
+v0 = jnp.ones((nfill + nfill**2)) / (nfill + nfill**2)  # beware, eps = 1e-10
 w, r_norms = kot.run_eg(v0)
 plt.plot(r_norms)
 plt.title("EG convergence")
 plt.show()
 eg_rdiff = compare(w[0].flatten(), G)
 print("Relative difference is {}".format(eg_rdiff))
+
+# # %%
+# # Just another strategy, is G a fixed point, find X ?
+# f, proj, _ = kot.get_eg_params()
+# v = jnp.concat((jnp.array(G).flatten(), jnp.zeros(nfill**2)))
+# grad_v = f(v)
+# print("grad1 norm: ", jnp.linalg.norm(grad_v[:nfill]))
+# print("grad2 norm: ", jnp.linalg.norm(grad_v[nfill:]))
+
+# # Frozen G, update X
+# update_norms, num_updates, stepsize = [], 100, 1e-3
+# for i in range(num_updates):
+#     grad_v = np.array(f(v))
+#     grad_v[:nfill] = 0.0
+#     new_v = proj(v - stepsize * grad_v)
+#     update_norms.append(jnp.linalg.norm(new_v - v))
+#     v = new_v
+
+# plt.plot(update_norms)
+# plt.title("G frozen, norm of the X updates")
+# plt.show()
+
+# # Check if v is now a fixed point
+# w = (v[:nfill], v[nfill:].reshape(nfill, nfill))
+# print("r_norm is now: ", get_r_norm(kot.get_R(w)))
 
 # %%
 # Compare SSIPM and SSN results
@@ -191,7 +216,9 @@ w, r_norms = kot.run_ssn(v0, theta0, 1e-10, 40)
 plt.plot(r_norms)
 plt.title("SSN convergence")
 plt.show()
-ssn_rdiff = compare(w[0].flatten(), G)
+
+G_ssn = w[0].flatten()
+ssn_rdiff = compare(G_ssn, G)
 print("Relative difference is {}".format(ssn_rdiff))
 
 # %%
@@ -267,8 +294,10 @@ ax3.plot(xa, Txa, linewidth=2, color="black", ls="--", label="True map")
 
 x = np.linspace(0, 1, len(xa))
 TX = transport_1D(x, G, X, X_fill, lbda_2, kernel=kernel, l=l)
+TX_ssn = transport_1D(x, G_ssn, X, X_fill, lbda_2, kernel=kernel, l=l)
 
 ax3.plot(xa, TX * na, color="r", lw=2, label="Inferred map")
+ax3.plot(xa, TX_ssn * na, color="purple", lw=2, label="Inferred map (SSN)")
 
 ax1.scatter(
     X * na, mu[(n * X).astype(int)], label="mu samples", marker="x", color="r", s=50

@@ -4,6 +4,8 @@ datasets/
 .pytest_cache/
 tutorials/
 papers/
+tmp/
+final_notebook_plan.md
 
 # kernel-sos-ott
 1D Example.ipynb
@@ -11,3 +13,4 @@ sobol_seq.py
 sobol.cpp
 optim.py
 utils.py
+profiling_result.txt
