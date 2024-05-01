@@ -27,3 +27,10 @@ class EG:
         y = self.proj(x - self.stepsize * self.f(x))
         self.x = self.proj(x - self.stepsize * self.f(y))
         return self.x
+
+
+# ## About the EG formulation
+
+# Given the minmax problem from (4.1), I use the operator $(\delta_\gamma, -\delta_X)$ to get $f$ that is later reinjected in the EG algorithm:
+# $$y_{t+1} = proj(x_t-\tau f(x_t));\\
+# x_{t+1} = proj(x_t - \tau f(y_{t+1}))$$

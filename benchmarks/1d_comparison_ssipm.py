@@ -124,7 +124,7 @@ kot = KernelOT(_X, _Y, my_gaussian_kernel)
 assert jnp.allclose(X_fill, kot.X_fillings)
 _w_src = jnp.mean(Kx2, axis=0)[:, jnp.newaxis]
 assert jnp.allclose(_w_src, kot.w_src)
-_q2 = jnp.mean(Kx3**2) + jnp.mean(Ky3**2)
+_q2 = jnp.mean(Kx3) + jnp.mean(Ky3)
 assert jnp.isclose(kot.q2, _q2)
 XY_fill = np.hstack([X_fill, Y_fill])
 assert jnp.allclose(XY_fill, kot.XY_fillings)
@@ -132,6 +132,10 @@ _K_XY = gaussian_kernel(XY_fill[:, None], XY_fill, l)
 # assert min(jnp.linalg.eigvalsh(kot.K_XY)) > 0.0
 assert jnp.allclose(_K_XY, kot.K_XY)
 assert jnp.linalg.norm(kot.R_cholesky - Phi) < 1e-2 * jnp.linalg.norm(kot.R_cholesky)
+
+# %%
+assert jnp.allclose(Kx2.mean(0), _w_src.flatten())
+assert jnp.allclose(Kx3.mean() + Ky3.mean(), _q2)
 
 # %%
 ## Regularization parameters

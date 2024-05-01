@@ -34,7 +34,7 @@ class KernelOT:
     alpha_1, alpha_2 = 1e-6, 1.0
     beta_0, beta_1, beta_2 = 0.5, 1.2, 5.0
 
-    def __init__(self, src, tgt, kernel):
+    def __init__(self, src, tgt, kernel, reg_strength=1.):
         # Parameters
         dim, n_sample = src.shape[1], src.shape[0]
         self.src = src
@@ -54,12 +54,10 @@ class KernelOT:
 
         # Other parameters
         self.lambda1, self.lambda2 = (
-            1 / self.n,
-            1 / n_sample**0.5,
+            reg_strength / self.n,
+            reg_strength / n_sample**0.5,
         )  # **0.5 TODO: square root?
-        self.q2 = jnp.mean(kernel(self.src, self.src) ** 2) + jnp.mean(
-            kernel(self.tgt, self.tgt) ** 2
-        )
+        self.q2 = jnp.mean(kernel(self.src, self.src) + kernel(self.tgt, self.tgt))
         self.w_src = jnp.mean(kernel(self.src, self.X_fillings), axis=0)[:, jnp.newaxis]
         self.w_tgt = jnp.mean(kernel(self.tgt, self.Y_fillings), axis=0)[:, jnp.newaxis]
 
@@ -123,7 +121,7 @@ class KernelOT:
             lambda _a1: (self.Q / (2 * self.lambda2) + mu * self.Id) @ _a1
             + self.A @ T_op(self.phi_star_op(_a1)).flatten()
         )
-        a_tilde_1, _ = jax.scipy.sparse.linalg.cg(_block1, a1.squeeze())
+        a_tilde_1, _ = jax.scipy.sparse.linalg.cg(_block1, a1.squeeze(),maxiter=20)
         a_tilde_2 = 1 / (1 + mu) * (a2 + T_op(a2))
         return a_tilde_1[:, jnp.newaxis], a_tilde_2
 
@@ -186,7 +184,7 @@ class KernelOT:
 
         return f, proj, L
 
-    def run_eg(self, v0, error=1e-2, max_iter=100, verbose=False, L=None):
+    def run_eg(self, v0, residual_norm=1e-2, max_iter=100, verbose=False, L=None):
         # Parameters
         r_norms = []
         n = self.n
@@ -206,11 +204,13 @@ class KernelOT:
             if verbose:
                 print("Step: ", step)
                 print("r_norm: ", r_norm)
+
             r_norms.append(r_norm)
-            if r_norm < error:
-                print("The algorithm converged in {} steps.".format(_))
+            if r_norm < residual_norm:
+                print("The algorithm converged in {} steps.".format(step))
                 break
         print("The algorithm did not converge in {} steps.".format(max_iter))
+        print("Residual norm: ", r_norm)
 
         return w, r_norms
 
@@ -226,7 +226,7 @@ class KernelOT:
         else:
             return min(self.theta_max, self.beta_2 * theta)
 
-    def run_ssn(self, v0, theta0, error=1e-2, max_iter=100, verbose=False):
+    def run_ssn(self, v0, theta0, residual_norm=1e-2, max_iter=100, verbose=False):
         """Cuturi et al. algorithm 2.
         Termination condition not implemented."""
 
@@ -282,10 +282,11 @@ class KernelOT:
             if verbose:
                 print("r_norm: ", r_norm)
             r_norms.append(r_norm)
-            if r_norm < error:
+            if r_norm < residual_norm:
                 print("The algorithm converged in {} steps.".format(step))
                 break
-
+        print("The algorithm did not converge in {} steps.".format(max_iter))
+        print("Residual norm: ", r_norm)
         return w, r_norms
 
 
