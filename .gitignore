@@ -11,6 +11,6 @@ final_notebook_plan.md
 1D Example.ipynb
 sobol_seq.py
 sobol.cpp
-optim.py
-utils.py
+# optim.py
+# utils.py
 profiling_result.txt
